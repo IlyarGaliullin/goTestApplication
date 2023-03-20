@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"testApplication/interfaces"
 	"testApplication/models"
-	"testApplication/repositories/postgres"
+	"testApplication/repositories/mongodb"
 	"testApplication/utils"
 )
 
@@ -89,7 +89,7 @@ func main() {
 
 	utils.LoadConf()
 
-	pg = postgres.InitConnection()
+	pg = mongodb.InitConnection()
 	router := gin.Default()
 	router.GET("/clients", getClients)
 	router.GET("/clients/:id", getClientById)
