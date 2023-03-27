@@ -38,12 +38,13 @@ func InitConnection() *postgres {
 	return &postgres{db: db}
 }
 
-func (pg *postgres) GetClients(ctx context.Context, offset int, limit int) []models.Client {
+func (pg *postgres) GetClients(ctx context.Context, offset int, limit int) ([]models.Client, error) {
 	var clients []models.Client
 
-	clientsStmt, err := pg.db.Prepare("select * from clients order by id limit $2 offset $1")
+	clientsStmt, err := pg.db.Prepare("SELECT * FROM clients ORDER BY id LIMIT $2 OFFSET $1")
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		return clients, err
 	}
 	defer clientsStmt.Close()
 
@@ -54,7 +55,8 @@ func (pg *postgres) GetClients(ctx context.Context, offset int, limit int) []mod
 		rows, err = clientsStmt.Query(offset, limit)
 	}
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		return clients, err
 	}
 
 	for rows.Next() {
@@ -70,24 +72,27 @@ func (pg *postgres) GetClients(ctx context.Context, offset int, limit int) []mod
 			Name: name,
 		})
 		if err != nil {
-			log.Fatal(err)
+			log.Println(err)
+			return clients, err
 		}
 	}
 	err = rows.Err()
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		return clients, err
 	}
 
-	return clients
+	return clients, nil
 }
 
 func (pg *postgres) GetClientById(ctx context.Context, id int) (models.Client, error) {
 
 	var name string
 
-	clientByIdStmt, err := pg.db.Prepare("select name from clients where id = $1")
+	clientByIdStmt, err := pg.db.Prepare("SELECT name FROM clients WHERE id = $1")
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		return models.Client{}, err
 	}
 	defer clientByIdStmt.Close()
 
@@ -97,7 +102,8 @@ func (pg *postgres) GetClientById(ctx context.Context, id int) (models.Client, e
 		if err == sql.ErrNoRows {
 			return models.Client{}, errors.New(fmt.Sprintf("No client found by id %d\n", id))
 		} else {
-			log.Fatal(err)
+			log.Println(err)
+			return models.Client{}, err
 		}
 	}
 	return models.Client{Id: id, Name: name}, nil
@@ -105,7 +111,7 @@ func (pg *postgres) GetClientById(ctx context.Context, id int) (models.Client, e
 
 func (pg *postgres) CreateClient(ctx context.Context, newClient models.Client) (models.Client, error) {
 
-	insertClientStmt, err := pg.db.Prepare("insert into clients(name) values($1) returning *")
+	insertClientStmt, err := pg.db.Prepare("INSERT INTO clients(name) VALUES($1) returning *")
 	if err != nil {
 		return models.Client{}, err
 	}
@@ -115,7 +121,8 @@ func (pg *postgres) CreateClient(ctx context.Context, newClient models.Client) (
 	name := ""
 	err = insertClientStmt.QueryRow(newClient.Name).Scan(&lastId, &name)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		return models.Client{}, err
 	}
 
 	return models.Client{Id: lastId, Name: name}, nil
@@ -123,20 +130,23 @@ func (pg *postgres) CreateClient(ctx context.Context, newClient models.Client) (
 
 func (pg *postgres) UpdateClient(ctx context.Context, client models.Client) error {
 
-	updateClientStmt, err := pg.db.Prepare("update clients set name = $1 where id = $2")
+	updateClientStmt, err := pg.db.Prepare("UPDATE clients SET name = $1 WHERE id = $2")
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		return err
 	}
 	defer updateClientStmt.Close()
 
 	res, err := updateClientStmt.Exec(client.Name, client.Id)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		return err
 	}
 
 	rowCount, err := res.RowsAffected()
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		return err
 	}
 	if rowCount == 0 {
 		return errors.New("no rows affected")
@@ -147,19 +157,22 @@ func (pg *postgres) UpdateClient(ctx context.Context, client models.Client) erro
 
 func (pg *postgres) DeleteClient(ctx context.Context, id int) error {
 
-	insertClientStmt, err := pg.db.Prepare("delete from clients where id = $1")
+	insertClientStmt, err := pg.db.Prepare("DELETE FROM clients WHERE id = $1")
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		return err
 	}
 	defer insertClientStmt.Close()
 
 	res, err := insertClientStmt.Exec(id)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		return err
 	}
 	rowCount, err := res.RowsAffected()
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		return err
 	}
 	if rowCount == 0 {
 		return errors.New("no rows affected")
