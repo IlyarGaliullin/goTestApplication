@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
 	"log"
+	"testApplication/graph"
 	"testApplication/handlers"
 	"testApplication/interfaces"
 	"testApplication/repositories/mongodb"
@@ -35,6 +36,13 @@ func main() {
 	router.POST("/clients", handler.CreateClient)
 	router.PATCH("/clients", handler.UpdateClient)
 	router.DELETE("/clients/:id", handler.DeleteClient)
+
+	newGraph, err := graph.NewGraph(repo)
+	if err != nil {
+		return
+	}
+
+	router.POST("/clients_graph", newGraph.GraphqlHandler)
 
 	router.Run("127.0.0.1:8080")
 }
