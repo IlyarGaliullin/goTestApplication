@@ -42,7 +42,7 @@ func main() {
 		return
 	}
 
-	router.POST("/clients_graph", newGraph.GraphqlHandler)
+	router.POST("/graph", newGraph.GraphqlHandler)
 
 	router.Run("127.0.0.1:8080")
 }

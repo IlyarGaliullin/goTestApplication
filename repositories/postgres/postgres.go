@@ -5,6 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/golang-migrate/migrate/v4"
+	migratePostgres "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	_ "github.com/lib/pq"
 	"log"
 	"testApplication/models"
 	"testApplication/utils"
@@ -28,6 +32,19 @@ func InitConnection() *postgres {
 	db, err := sql.Open("postgres", connString)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	driver, err := migratePostgres.WithInstance(db, &migratePostgres.Config{})
+	migr, err := migrate.NewWithDatabaseInstance("file://db/migrations", "postgres", driver)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = migr.Up()
+	if err != nil {
+		if err != migrate.ErrNoChange {
+			log.Fatal(err)
+		}
 	}
 
 	err = db.Ping()

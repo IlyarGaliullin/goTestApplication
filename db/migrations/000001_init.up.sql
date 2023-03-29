@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS clients
+(
+    id   INTEGER GENERATED ALWAYS AS IDENTITY
+        CONSTRAINT client_pkey
+            PRIMARY KEY ,
+    name VARCHAR(255) NOT NULL
+);

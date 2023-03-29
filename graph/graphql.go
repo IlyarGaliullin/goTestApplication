@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/graphql-go/graphql"
 	"net/http"
@@ -42,7 +43,13 @@ func NewGraph(repo interfaces.ClientRepo) (*graph, error) {
 					},
 				},
 				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-					return graph.repo.GetClientById(context.TODO(), p.Args["id"].(int))
+
+					if p.Args["id"] == nil {
+						return nil, errors.New("id is empty")
+					}
+					id := p.Args["id"].(int)
+
+					return graph.repo.GetClientById(context.TODO(), id)
 				},
 			},
 			"clients": &graphql.Field{
@@ -82,7 +89,7 @@ func NewGraph(repo interfaces.ClientRepo) (*graph, error) {
 						Type: graphql.String,
 					},
 				},
-				Description: "Add client by id",
+				Description: "Add client",
 				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 					client := models.Client{
 						Name: p.Args["name"].(string),
@@ -122,6 +129,10 @@ func NewGraph(repo interfaces.ClientRepo) (*graph, error) {
 				},
 				Description: "Delete client by id",
 				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+
+					if p.Args["id"] == nil {
+						return nil, errors.New("id is empty")
+					}
 					id := p.Args["id"].(int)
 
 					err := graph.repo.DeleteClient(context.TODO(), id)
@@ -166,5 +177,5 @@ func (graph graph) GraphqlHandler(c *gin.Context) {
 		c.IndentedJSON(http.StatusBadRequest, result.Errors)
 		return
 	}
-	c.IndentedJSON(http.StatusOK, result.Data)
+	c.IndentedJSON(http.StatusOK, result)
 }
