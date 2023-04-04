@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 	"net/http"
 	"strconv"
 	"testApplication/interfaces"
@@ -56,6 +57,8 @@ func (handler *UserHandler) CreateUser(c *gin.Context) {
 		return
 	}
 
+	pass, _ := bcrypt.GenerateFromPassword([]byte(user.Password), 14)
+	user.Password = string(pass)
 	insertedUser, err := handler.Repo.CreateUser(c, user)
 	if err != nil {
 		c.IndentedJSON(http.StatusBadRequest, gin.H{"status": "Error", "message": err})

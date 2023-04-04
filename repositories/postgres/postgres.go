@@ -376,7 +376,7 @@ func (pg *postgres) UpdateRoles(ctx context.Context, user models.User, roles []m
 	panic("implement me")
 }
 
-func (pg *postgres) GetAllUserGrants(ctx context.Context, userId int) (grantsFormatted map[string][]string, err error) {
+func (pg *postgres) GetAllUserGrants(ctx context.Context, userId int) (grants []models.Grant, err error) {
 
 	grantsStmt, err := pg.db.Prepare(
 		"SELECT g.ontable, g.read, g.\"create\", g.update, g.delete FROM userroles ur " +
@@ -397,8 +397,6 @@ func (pg *postgres) GetAllUserGrants(ctx context.Context, userId int) (grantsFor
 		return
 	}
 
-	grantsFormatted = make(map[string][]string)
-
 	for rows.Next() {
 		var grant models.Grant
 		err = rows.Scan(&grant.Table, &grant.Read, &grant.Create, &grant.Update, &grant.Delete)
@@ -417,7 +415,7 @@ func (pg *postgres) GetAllUserGrants(ctx context.Context, userId int) (grantsFor
 			operations = append(operations, "delete")
 		}
 
-		grantsFormatted[grant.Table] = operations
+		grants = append(grants, grant)
 		if err != nil {
 			log.Println(err)
 			return
@@ -429,4 +427,30 @@ func (pg *postgres) GetAllUserGrants(ctx context.Context, userId int) (grantsFor
 		return
 	}
 	return
+}
+
+func (pg *postgres) CheckUserGrant(ctx context.Context, userId int, table string, operation string) (found bool, err error) {
+
+	sqlString := "SELECT true found FROM userroles ur " +
+		" JOIN roles r ON ur.roleid = r.id" +
+		" JOIN grants g on r.id = g.roleid" +
+		" WHERE ur.userid = $1 AND g.ontable = $2"
+
+	sqlString += " AND \"" + operation + "\" = true"
+
+	grantStmt, err := pg.db.Prepare(sqlString)
+
+	if err != nil {
+		log.Println(err)
+		return false, nil
+	}
+	defer grantStmt.Close()
+
+	err = grantStmt.QueryRow(userId, table).Scan(&found)
+	if err != nil {
+		log.Println(err)
+		return false, nil
+	}
+
+	return found, nil
 }

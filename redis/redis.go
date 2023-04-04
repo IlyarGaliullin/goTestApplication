@@ -12,11 +12,13 @@ import (
 	"time"
 )
 
+var tokenLifespan = time.Hour * 6
+
 type Connection struct {
 	client *redis.Client
 }
 
-var ErrUnauthorized = errors.New("UnAuthorized")
+var ErrUnauthorized = errors.New("unauthorized")
 
 func NewConn() (*Connection, error) {
 
@@ -38,7 +40,7 @@ func (redisConn *Connection) AddToken(ctx context.Context, user models.User, tok
 
 	userKey := fmt.Sprintf("user:%d", user.Id)
 
-	err := redisConn.client.Set(ctx, token, userKey, time.Hour*6).Err()
+	err := redisConn.client.Set(ctx, token, userKey, tokenLifespan).Err()
 	if err != nil {
 		return err
 	}
