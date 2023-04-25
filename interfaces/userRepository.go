@@ -19,4 +19,6 @@ type UserRepo interface {
 	UpdateRoles(ctx context.Context, user models.User, roles []models.Role) (models.User, error)
 
 	CheckUserGrant(ctx context.Context, userId int, table string, operation string) (found bool, err error)
+
+	GetFieldsPermissions(ctx context.Context, userId int, tableName string) (map[string]bool, error)
 }

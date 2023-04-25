@@ -16,10 +16,10 @@ import (
 )
 
 func getToken(c *gin.Context) (token string) {
-	bearerToken := c.GetHeader("Authorization")
+	token = c.GetHeader("Authorization")
 
-	if len(strings.Split(bearerToken, " ")) == 2 {
-		token = strings.Split(bearerToken, " ")[1]
+	if len(strings.Split(token, " ")) == 2 {
+		token = strings.Split(token, " ")[1]
 		return
 	}
 	return
@@ -109,6 +109,11 @@ func Login(userHandler *handlers.UserHandler, redisConn *redis.Connection) gin.H
 
 		var user models.User
 		err := c.Bind(&user)
+		if err != nil {
+			log.Printf("authorization failed from %s, email: %s", c.ClientIP(), user.Email)
+			c.IndentedJSON(http.StatusBadRequest, gin.H{"message": "Wrong parameters"})
+			return
+		}
 
 		userFromDb, err := userHandler.Repo.ByEmail(c, user.Email)
 		log.Printf("authorization attempt from %s, email: %s", c.ClientIP(), user.Email)
@@ -119,7 +124,7 @@ func Login(userHandler *handlers.UserHandler, redisConn *redis.Connection) gin.H
 				c.IndentedJSON(http.StatusUnauthorized, gin.H{"message": "Wrong credentials"})
 				return
 			}
-			log.Printf("authorization failed from %s, email: %s", c.ClientIP(), user.Email)
+			log.Printf("authorization failed from %s, email: %s, internal server error %s", c.ClientIP(), user.Email, err)
 			c.IndentedJSON(http.StatusInternalServerError, gin.H{"message": err})
 			return
 		}
@@ -146,7 +151,7 @@ func Logout(redisConn *redis.Connection) gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 
-		token := c.GetHeader("token")
+		token := getToken(c)
 		if token == "" {
 			c.IndentedJSON(http.StatusBadRequest, gin.H{"message": "empty token"})
 		}

@@ -30,7 +30,7 @@ func main() {
 	usingDatabase := utils.Conf.Get("usingDatabase")
 
 	var repoClient interfaces.ClientRepo
-	repoUsers := postgres.InitConnection()
+	repoUsers := mongodb.InitConnection()
 
 	switch usingDatabase {
 	case "postgres":
@@ -59,7 +59,7 @@ func main() {
 	router.POST("/login", middleware.Login(userHandler, redisConn))
 	router.POST("/logout", middleware.Logout(redisConn))
 
-	newGraph, err := graph.NewGraph(repoClient)
+	newGraph, err := graph.NewGraph(redisConn, repoClient, repoUsers)
 	if err != nil {
 		return
 	}

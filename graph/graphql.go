@@ -5,20 +5,98 @@ import (
 	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/graphql-go/graphql"
+	"github.com/graphql-go/graphql/language/ast"
 	"net/http"
+	"strings"
 	"testApplication/interfaces"
 	"testApplication/models"
+	"testApplication/redis"
 )
 
 type graph struct {
-	repo   interfaces.ClientRepo
-	schema graphql.Schema
+	clientRepo interfaces.ClientRepo
+	userRepo   interfaces.UserRepo
+	schema     graphql.Schema
 }
 
-func NewGraph(repo interfaces.ClientRepo) (*graph, error) {
-	graph := graph{
-		repo: repo,
+func getToken(c *gin.Context) (token string) {
+	bearerToken := c.GetHeader("Authorization")
+
+	if len(strings.Split(bearerToken, " ")) == 2 {
+		token = strings.Split(bearerToken, " ")[1]
+		return
 	}
+	return
+}
+
+func checkUserGrant(c *gin.Context, redisConn *redis.Connection, userRepo interfaces.UserRepo, table string, operation string) (int, bool, error) {
+	token := getToken(c)
+
+	userId, err := redisConn.CheckToken(c, token)
+
+	if err != nil {
+		return userId, false, err
+	}
+
+	grant, err := userRepo.CheckUserGrant(
+		c,
+		userId,
+		table,
+		operation,
+	)
+
+	if err != nil {
+		return userId, false, err
+	}
+
+	return userId, grant, nil
+}
+
+func checkPermissions(requestFields []ast.Selection, allowedFields map[string]bool) []ast.Selection {
+	authorizedFields := make([]ast.Selection, 0)
+
+	for _, field := range requestFields {
+		fieldName := field.(*ast.Field).Name.Value
+		if allowed, ok := allowedFields[fieldName]; ok && allowed {
+			authorizedFields = append(authorizedFields, field)
+
+		}
+	}
+
+	return authorizedFields
+}
+
+func fillFieldsRecursive(parentField string, field *ast.Field, userId int, graph *graph) *ast.Field {
+
+	newAST := field
+
+	var newSelections []ast.Selection
+	for _, v1 := range field.SelectionSet.Selections {
+
+		if v1.(*ast.Field).SelectionSet != nil {
+			newSelections = append(newSelections, fillFieldsRecursive(v1.(*ast.Field).Name.Value, v1.(*ast.Field), userId, graph))
+			continue
+		}
+		newSelections = append(newSelections, v1)
+	}
+
+	permissions, err := graph.userRepo.GetFieldsPermissions(context.TODO(), userId, parentField)
+	if err != nil {
+		return nil
+	}
+
+	authorizedSelection := checkPermissions(newSelections, permissions)
+	newAST.SelectionSet.Selections = authorizedSelection
+
+	return newAST
+}
+
+func NewGraph(redisConn *redis.Connection, clientRepo interfaces.ClientRepo, userRepo interfaces.UserRepo) (*graph, error) {
+	graph := graph{
+		clientRepo: clientRepo,
+		userRepo:   userRepo,
+	}
+
 	var clientType = graphql.NewObject(graphql.ObjectConfig{
 		Name: "Client",
 		Fields: graphql.Fields{
@@ -44,12 +122,27 @@ func NewGraph(repo interfaces.ClientRepo) (*graph, error) {
 				},
 				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 
+					userId, grant, err := checkUserGrant(p.Context.(*gin.Context), redisConn, userRepo, "clients", "read")
+
+					if err != nil {
+						return nil, err
+					}
+					if !grant {
+						return nil, redis.ErrUnauthorized
+					}
+
+					var newASTs []*ast.Field
+
+					newASTs = append(newASTs, fillFieldsRecursive(p.Info.FieldASTs[0].Name.Value, p.Info.FieldASTs[0], userId, &graph))
+
+					p.Info.FieldASTs = newASTs
+
 					if p.Args["id"] == nil {
 						return nil, errors.New("id is empty")
 					}
 					id := p.Args["id"].(int)
 
-					return graph.repo.GetClientById(context.TODO(), id)
+					return graph.clientRepo.GetClientById(context.TODO(), id)
 				},
 			},
 			"clients": &graphql.Field{
@@ -65,6 +158,20 @@ func NewGraph(repo interfaces.ClientRepo) (*graph, error) {
 				},
 				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 
+					userId, grant, err := checkUserGrant(p.Context.(*gin.Context), redisConn, userRepo, "clients", "read")
+
+					if err != nil {
+						return nil, err
+					}
+					if !grant {
+						return nil, redis.ErrUnauthorized
+					}
+
+					var newASTs []*ast.Field
+
+					newASTs = append(newASTs, fillFieldsRecursive(p.Info.FieldASTs[0].Name.Value, p.Info.FieldASTs[0], userId, &graph))
+
+					p.Info.FieldASTs = newASTs
 					offset := 0
 					if p.Args["offset"] != nil {
 						offset, _ = p.Args["offset"].(int)
@@ -74,7 +181,7 @@ func NewGraph(repo interfaces.ClientRepo) (*graph, error) {
 						limit, _ = p.Args["limit"].(int)
 					}
 
-					return graph.repo.GetClients(context.TODO(), offset, limit)
+					return graph.clientRepo.GetClients(context.TODO(), offset, limit)
 				},
 			},
 		}})
@@ -91,10 +198,26 @@ func NewGraph(repo interfaces.ClientRepo) (*graph, error) {
 				},
 				Description: "Add client",
 				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+
+					userId, grant, err := checkUserGrant(p.Context.(*gin.Context), redisConn, userRepo, "clients", "create")
+
+					if err != nil {
+						return nil, err
+					}
+					if !grant {
+						return nil, redis.ErrUnauthorized
+					}
+
+					var newASTs []*ast.Field
+
+					newASTs = append(newASTs, fillFieldsRecursive(p.Info.FieldASTs[0].Name.Value, p.Info.FieldASTs[0], userId, &graph))
+
+					p.Info.FieldASTs = newASTs
+
 					client := models.Client{
 						Name: p.Args["name"].(string),
 					}
-					return graph.repo.CreateClient(context.TODO(), client)
+					return graph.clientRepo.CreateClient(context.TODO(), client)
 				},
 			},
 			"update": &graphql.Field{
@@ -109,11 +232,26 @@ func NewGraph(repo interfaces.ClientRepo) (*graph, error) {
 				},
 				Description: "Update client by id",
 				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+
+					userId, grant, err := checkUserGrant(p.Context.(*gin.Context), redisConn, userRepo, "clients", "update")
+
+					if err != nil {
+						return nil, err
+					}
+					if !grant {
+						return nil, redis.ErrUnauthorized
+					}
+					var newASTs []*ast.Field
+
+					newASTs = append(newASTs, fillFieldsRecursive(p.Info.FieldASTs[0].Name.Value, p.Info.FieldASTs[0], userId, &graph))
+
+					p.Info.FieldASTs = newASTs
+
 					client := models.Client{
 						Id:   p.Args["id"].(int),
 						Name: p.Args["name"].(string),
 					}
-					err := graph.repo.UpdateClient(context.TODO(), client)
+					err = graph.clientRepo.UpdateClient(context.TODO(), client)
 					if err != nil {
 						return nil, err
 					}
@@ -130,12 +268,26 @@ func NewGraph(repo interfaces.ClientRepo) (*graph, error) {
 				Description: "Delete client by id",
 				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 
+					userId, grant, err := checkUserGrant(p.Context.(*gin.Context), redisConn, userRepo, "clients", "delete")
+
+					if err != nil {
+						return nil, err
+					}
+					if !grant {
+						return nil, redis.ErrUnauthorized
+					}
+					var newASTs []*ast.Field
+
+					newASTs = append(newASTs, fillFieldsRecursive(p.Info.FieldASTs[0].Name.Value, p.Info.FieldASTs[0], userId, &graph))
+
+					p.Info.FieldASTs = newASTs
+
 					if p.Args["id"] == nil {
 						return nil, errors.New("id is empty")
 					}
 					id := p.Args["id"].(int)
 
-					err := graph.repo.DeleteClient(context.TODO(), id)
+					err = graph.clientRepo.DeleteClient(context.TODO(), id)
 					if err != nil {
 						return nil, err
 					}
@@ -173,7 +325,11 @@ func (graph graph) GraphqlHandler(c *gin.Context) {
 		OperationName:  reqObj.Operation,
 	})
 
-	if len(result.Errors) > 0 {
+	if result.HasErrors() {
+		if result.Errors[0].Error() == redis.ErrUnauthorized.Error() {
+			c.IndentedJSON(http.StatusForbidden, result.Errors)
+			return
+		}
 		c.IndentedJSON(http.StatusBadRequest, result.Errors)
 		return
 	}

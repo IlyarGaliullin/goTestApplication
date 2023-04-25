@@ -56,6 +56,30 @@ func InitConnection() *postgres {
 	return &postgres{db: db}
 }
 
+func InitConnectionNoMigration() *postgres {
+
+	host := utils.Conf.Get("postgres.host")
+	port := utils.Conf.GetInt("postgres.port")
+	user := utils.Conf.Get("postgres.user")
+	password := utils.Conf.Get("postgres.password")
+	database := utils.Conf.Get("postgres.database")
+
+	connString := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", host, port, user, password, database)
+
+	var err error
+	db, err := sql.Open("postgres", connString)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = db.Ping()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return &postgres{db: db}
+}
+
 func (pg *postgres) GetClients(ctx context.Context, offset int, limit int) ([]models.Client, error) {
 	var clients []models.Client
 
@@ -453,4 +477,9 @@ func (pg *postgres) CheckUserGrant(ctx context.Context, userId int, table string
 	}
 
 	return found, nil
+}
+
+func (pg *postgres) GetFieldsPermissions(ctx context.Context, userId int, tableName string) (map[string]bool, error) {
+	//TODO implement me
+	panic("implement me")
 }
